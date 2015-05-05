@@ -60,10 +60,11 @@ public class LocalApp{
 				System.exit(1);
 			}
 			String key = uploadUrlsToS3();
+			String sqsURI;
 			//TODO: check if manager exists
 			if (!managerExists){
-				//createManager();
-				loadToSQS(key);
+				sqsURI = loadToSQS(key);
+				createManager(sqsURI);
 				managerExists = true;
 			}
 			else
@@ -102,7 +103,7 @@ public class LocalApp{
 
 	}
 
-	private static void loadToSQS(String key) {
+	private static String loadToSQS(String key) {
 
 		AmazonSQS sqs = new AmazonSQSClient(Credentials);
 		Region usEast1 = Region.getRegion(Regions.US_EAST_1);
@@ -111,9 +112,10 @@ public class LocalApp{
 		System.out.println("===========================================");
 		System.out.println("Getting Started with Amazon SQS");
 		System.out.println("===========================================\n");
-
+		String managerQueue1Url = null;
+		
 		try {
-			String managerQueue1Url;
+			
 
 			if (!managerExists) {
 				// Create a queue
@@ -130,13 +132,6 @@ public class LocalApp{
 				managerQueue1Url = sqs.createQueue(createQueueRequest).getQueueUrl(); //TODO: use existing queue instead of creating one
 			}
 
-			// List queues
-			System.out.println("Listing all queues in your account.\n");
-			for (String queueUrl : sqs.listQueues().getQueueUrls()) {
-				System.out.println("  QueueUrl: " + queueUrl);
-			}
-			System.out.println();
-
 			// Send a message
 			S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
 			String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
@@ -149,5 +144,13 @@ public class LocalApp{
 					"being able to access the network.");
 			System.out.println("Error Message: " + ace.getMessage());
 		}
-	}		
+		
+		return managerQueue1Url;
+	}
+	
+	private static void createManager(String sqsURI) throws FileNotFoundException, IOException, InterruptedException {
+		String[] args = new String[1];
+		args[0] = sqsURI;
+		Manager.main(args);
+	}
 }
