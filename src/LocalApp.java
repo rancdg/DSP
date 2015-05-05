@@ -30,8 +30,7 @@ public class LocalApp{
 	public static String propertiesFilePath = "cred.properties";
 	public static String inputFile;
 	public static String outputFile;
-	int n;
-
+	public static int n;
 
 	public static void main(String[] args) throws FileNotFoundException,
 	IOException, InterruptedException{
@@ -44,13 +43,14 @@ public class LocalApp{
 			
 			inputFile = args[0];
 			outputFile = args[1];
+			
 			try {
-				int n = Integer.parseInt(args[3]);
+				n = Integer.parseInt(args[2]);
 			} catch (NumberFormatException e) {
-				System.err.println("Argument" + args[3] + " must be an integer.");
+				System.err.println("Argument" + args[2] + " must be an integer.");
 				System.exit(1);
 			}
-			loadUrlsS3();
+			uploadUrlsToS3();
 		}
 		
 		else {		
@@ -64,7 +64,7 @@ public class LocalApp{
 
 	}
 
-	private static void loadUrlsS3() throws FileNotFoundException,
+	private static void uploadUrlsToS3() throws FileNotFoundException,
 	IOException, InterruptedException{
 
 		Credentials = new PropertiesCredentials(
