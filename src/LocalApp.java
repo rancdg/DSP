@@ -50,19 +50,22 @@ public class LocalApp{
 
 		else if (args.length == 3) {
 
+			//parse arguments
 			inputFile = args[0];
 			outputFile = args[1];
-
 			try {
 				n = Integer.parseInt(args[2]);
 			} catch (NumberFormatException e) {
 				System.err.println("Argument" + args[2] + " must be an integer.");
 				System.exit(1);
 			}
+			
+			//upload
 			String key = uploadUrlsToS3();
 			String sqsURI;
 			//TODO: check if manager exists
 			if (!managerExists){
+				//if manager doesnt exist, load pics url's to manager's queue and start the manager
 				sqsURI = loadToSQS(key);
 				createManager(sqsURI);
 				managerExists = true;
@@ -104,39 +107,52 @@ public class LocalApp{
 	}
 
 	private static String loadToSQS(String key) {
-
-		AmazonSQS sqs = new AmazonSQSClient(Credentials);
+		
+		//create the manager SQS (new manager)
+		AmazonSQS managerSQS = new AmazonSQSClient(Credentials);
 		Region usEast1 = Region.getRegion(Regions.US_EAST_1);
-		sqs.setRegion(usEast1);
-
+		managerSQS.setRegion(usEast1);
+		
+		//create the local app SQS
+		AmazonSQS localAppSQS = new AmazonSQSClient(Credentials);
+		localAppSQS.setRegion(usEast1);
+		
 		System.out.println("===========================================");
 		System.out.println("Getting Started with Amazon SQS");
 		System.out.println("===========================================\n");
-		String managerQueue1Url = null;
+		String managerQUrl = null;
+		String localAppQUrl = null;		
 		
-		try {
-			
+		try {			
 
+			//create own queue for returning messages
+			// Create a queue
+			System.out.println("Creating a new SQS queue called localAppQueue.\n");
+			CreateQueueRequest localAppQueueRequest = new CreateQueueRequest(
+					"localAppQueue"); //maybe extrapolate
+			localAppQUrl = localAppSQS.createQueue(localAppQueueRequest).getQueueUrl();
+			
 			if (!managerExists) {
 				// Create a queue
-				System.out.println("Creating a new SQS queue called MyQueue.\n");
-				CreateQueueRequest createQueueRequest = new CreateQueueRequest(
-						"managerQueue1"); //maybe extrapolate
-				managerQueue1Url = sqs.createQueue(createQueueRequest).getQueueUrl();
+				System.out.println("Creating a new SQS queue called managerQueue.\n");
+				CreateQueueRequest managerQueueRequest = new CreateQueueRequest(
+						"managerQueue"); //maybe extrapolate
+				managerQUrl = managerSQS.createQueue(managerQueueRequest).getQueueUrl();
 			}
 			else {
 				// Create a queue
-				System.out.println("Creating a new SQS queue called MyQueue.\n");
-				CreateQueueRequest createQueueRequest = new CreateQueueRequest(
-						"managerQueue1"); //maybe extrapolate
-				managerQueue1Url = sqs.createQueue(createQueueRequest).getQueueUrl(); //TODO: use existing queue instead of creating one
+				System.out.println("Creating a new SQS queue called managerQueue.\n");
+				CreateQueueRequest managerQueueRequest = new CreateQueueRequest(
+						"managerQueue"); //maybe extrapolate
+				managerQUrl = managerSQS.createQueue(managerQueueRequest).getQueueUrl(); //TODO: use existing queue instead of creating one
 			}
 
-			// Send a message
+			//Send a message
 			S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
 			String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
 			System.out.println("Sending a message to managerQueue1.\n");
-			sqs.sendMessage(new SendMessageRequest(managerQueue1Url, URI));
+			String message = localAppQUrl +" "+ URI;
+			managerSQS.sendMessage(new SendMessageRequest(managerQUrl, message));
 
 		} catch (AmazonClientException ace) {
 			System.out.println("Caught an AmazonClientException, which means the client encountered " +
@@ -145,7 +161,7 @@ public class LocalApp{
 			System.out.println("Error Message: " + ace.getMessage());
 		}
 		
-		return managerQueue1Url;
+		return managerQUrl;
 	}
 	
 	private static void createManager(String sqsURI) throws FileNotFoundException, IOException, InterruptedException {
