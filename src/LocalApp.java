@@ -34,7 +34,7 @@ public class LocalApp{
 	public static String propertiesFilePath = "cred.properties";
 	public static String inputFile;
 	public static String outputFile;
-	public static int n;
+	public static String n;
 	public static boolean managerExists = false;
 
 	public static void main(String[] args) throws FileNotFoundException,
@@ -53,25 +53,18 @@ public class LocalApp{
 			//parse arguments
 			inputFile = args[0];
 			outputFile = args[1];
-			try {
-				n = Integer.parseInt(args[2]);
-			} catch (NumberFormatException e) {
-				System.err.println("Argument" + args[2] + " must be an integer.");
-				System.exit(1);
-			}
+			n = args[2];
+			
 			
 			//upload
-			String key = uploadUrlsToS3();
-			String sqsURI;
+			String key = uploadUrlsToS3(inputFile);
+			String sqsURI = loadToSQS(key);
 			//TODO: check if manager exists
 			if (!managerExists){
-				//if manager doesnt exist, load pics url's to manager's queue and start the manager
-				sqsURI = loadToSQS(key);
+				//if manager doesnt exist, load pics url's to manager's queue and start the manager				 
 				createManager(sqsURI);
 				managerExists = true;
 			}
-			else
-			loadToSQS(key);
 
 		}
 
@@ -86,7 +79,7 @@ public class LocalApp{
 
 	}
 
-	private static String uploadUrlsToS3() throws FileNotFoundException,
+	private static String uploadUrlsToS3(String inputFile) throws FileNotFoundException,
 	IOException, InterruptedException{
 
 		S3 = new AmazonS3Client(Credentials);
@@ -151,7 +144,7 @@ public class LocalApp{
 			S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
 			String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
 			System.out.println("Sending a message to managerQueue1.\n");
-			String message = localAppQUrl +" "+ URI;
+			String message = localAppQUrl +" "+ URI+ " " + n;
 			managerSQS.sendMessage(new SendMessageRequest(managerQUrl, message));
 
 		} catch (AmazonClientException ace) {

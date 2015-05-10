@@ -1,6 +1,8 @@
+import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map.Entry;
 
@@ -11,6 +13,7 @@ import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.AmazonS3URI;
 import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.sqs.AmazonSQS;
@@ -73,7 +76,7 @@ public class Manager {
     }
 	}
 
-	private static void recieveMessage() {
+	private static void recieveMessage() throws IOException {
 		
 		// Receive messages
         System.out.println("Receiving messages from managerQueue.\n");
@@ -83,14 +86,19 @@ public class Manager {
         for (Message message : messages) {
             
         	//get and parse message
-        	String localAppURI = message.getBody().split(" ")[0];
-        	String inputURI = message.getBody().split(" ")[1];
+        	String[] messageBody = message.getBody().split(" ");
+        	String localAppURI = messageBody[0];
+        	String inputURI = messageBody[1];
+        	int n = Integer.parseInt(messageBody[3]);
+        	
         	
         	//download photos URI list from S3
         	System.out.println("Downloading an object");
-            //S3Object object = S3.getObject(new GetObjectRequest(bucketname, key)); //TODO: figure out how to use URLs to download instead of bucketname
-            //System.out.println("Content-Type: "  + object.getObjectMetadata().getContentType());
-            //displayTextInputStream(object.getObjectContent());
+            AmazonS3URI S3URI = new AmazonS3URI(inputURI);
+        	S3Object object = S3.getObject(new GetObjectRequest(S3URI.getBucket(), S3URI.getKey())); //TODO: figure out how to use URLs to download instead of bucketname
+            System.out.println("Content-Type: "  + object.getObjectMetadata().getContentType());
+            BufferedReader reader = new BufferedReader(new InputStreamReader(object.getObjectContent()));
+            String line = reader.readLine();
             
         	//for debugging:
         	System.out.println("  Message");
