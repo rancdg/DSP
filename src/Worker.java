@@ -49,15 +49,15 @@ public class Worker {
 		return outputfile;
 	}
 	
-	private static String uploadFileToS3(File uploadFile, String bucketName) throws FileNotFoundException,
+	private static String uploadFileToS3(File uploadFile , String bucketName) throws FileNotFoundException,
 	IOException, InterruptedException{
 		
 		
 		// If the bucket doesn't exist - will create it.
 		// Notice - this will create it in the default region :Region.US_Standard
-		if (!S3.doesBucketExist("imgbucket")) {
+		if (!S3.doesBucketExist(bucketName)) {
 			System.out.println("Bucket doesn't exist. Creating it.");
-			S3.createBucket("imgbucket");
+			S3.createBucket(bucketName);
 		}
 		else
 			System.out.println("Bucket exists.");
@@ -78,7 +78,8 @@ public class Worker {
 		System.out.println("AmazonS3Client created.");
 		URL imgurl = new URL("http://25.media.tumblr.com/tumblr_mcs2qmvPwB1qaxd6qo1_1280.gif");
 		File img = imgResize(imgurl);
-		uploadFileToS3(img, "imgTestBucket");
+		String bucketName = "raneran15imgtest";
+		uploadFileToS3(img , bucketName);
 		
 		
 		/*

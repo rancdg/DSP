@@ -30,7 +30,7 @@ import com.amazonaws.services.sqs.model.SendMessageRequest;
 public class LocalApp{
 	public static PropertiesCredentials Credentials;
 	public static AmazonS3 S3;
-	public static String bucketName = "eranfiles2";
+	public static String bucketName = "eranfiles99";
 	public static String propertiesFilePath = "cred.properties";
 	public static String inputFile;
 	public static String outputFile;
@@ -89,7 +89,8 @@ public class LocalApp{
 		if (!S3.doesBucketExist(bucketName)) {
 			S3.createBucket(bucketName);
 		}
-		System.out.println("Bucket exist.");
+		else 
+			System.out.println("Bucket exist.");
 		File f = new File(inputFile);
 		PutObjectRequest por = new PutObjectRequest(bucketName, f.getName(), f);
 		// Upload the file
