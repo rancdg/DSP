@@ -42,6 +42,13 @@ public class Worker {
 	public static AmazonSQS managerSQS;
 	public static AmazonSQS workerSQS;
 	
+	/**
+	 * 
+	 * @param args - {String workerQueueURI, String managerQueueURI}
+	 * @throws FileNotFoundException
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
 	public static void main(String[] args) throws FileNotFoundException,
 	IOException, InterruptedException{
 		
@@ -84,7 +91,7 @@ public class Worker {
         	
         	//TODO
         	/*
-        	//send the manager a reciept
+        	//send the manager a reciept - need to know manager's queue
         	S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
     		String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
     		System.out.println("Sending a message to managerQueue1.\n");
@@ -98,6 +105,10 @@ public class Worker {
   
 	}
 
+	//A helper function which does the "work" - 
+	//Resizes the image and returns a smaller image with a 'small_' prefix
+	//Example: given the URL 'www.pictures.com/bla/pic/image1.gif'
+	//The function returns a resized (50x50) file called 'small_image1.gif'
 	private static File imgResize(URL imgurl) throws IOException{
 		BufferedImage originalImage = ImageIO.read(imgurl);
 		BufferedImage newImage = new BufferedImage(50, 50, BufferedImage.TYPE_INT_RGB);
@@ -135,6 +146,7 @@ public class Worker {
 
 	}
 	
+	//A helper function to obtain the image format
 	private static String getImageFormat(String img){
 		String[] tmp = img.split("\\.");
 		return tmp[tmp.length - 1];
