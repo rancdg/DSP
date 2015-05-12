@@ -91,63 +91,11 @@ public class Worker {
 			managerSQS.sendMessage(new SendMessageRequest(managerSqsURI, URI));
         	*/
         	
-        	//TODO delete message(s)
+        	//Delete message
         	DeleteMessageRequest del = new DeleteMessageRequest(workerSqsURI, message.getReceiptHandle());
         	workerSQS.deleteMessage(del);
         }
-        
-        
-        
-        
-/*
-		
-		URL imgurl = new URL("http://25.media.tumblr.com/tumblr_mcs2qmvPwB1qaxd6qo1_1280.gif");
-		File img = imgResize(imgurl);
-		String bucketName = "raneran15imgtest";
-		uploadFileToS3(img , bucketName);
-		
-		
-		Credentials = new PropertiesCredentials(
-		
-				new FileInputStream(propertiesFilePath));
-		System.out.println("Credentials created.");
-
-		//Parse
-		if (args.length>1){
-			System.err.println("Invalid arguments");
-			System.exit(1);
-		}
-		else
-			managerSqsURI = args[0];
-
-		//create SQS client
-		managerSQS = new AmazonSQSClient(Credentials);
-		S3 = new AmazonS3Client(Credentials);
-		Region usEast1 = Region.getRegion(Regions.US_EAST_1);
-		managerSQS.setRegion(usEast1);
-		S3.setRegion(usEast1);
-
-		recieveMessage();
-
-		//delete queue:
-		// Delete a queue
-		try{
-			System.out.println("Deleting the test queue.\n");
-			managerSQS.deleteQueue(new DeleteQueueRequest(managerSqsURI));
-		} catch (AmazonServiceException ase) {
-			System.out.println("Caught an AmazonServiceException, which means your request made it " +
-					"to Amazon SQS, but was rejected with an error response for some reason.");
-			System.out.println("Error Message:    " + ase.getMessage());
-			System.out.println("HTTP Status Code: " + ase.getStatusCode());
-			System.out.println("AWS Error Code:   " + ase.getErrorCode());
-			System.out.println("Error Type:       " + ase.getErrorType());
-			System.out.println("Request ID:       " + ase.getRequestId());
-		} catch (AmazonClientException ace) {
-			System.out.println("Caught an AmazonClientException, which means the client encountered " +
-					"a serious internal problem while trying to communicate with SQS, such as not " +
-					"being able to access the network.");
-			System.out.println("Error Message: " + ace.getMessage());
-		}*/
+  
 	}
 
 	private static File imgResize(URL imgurl) throws IOException{
@@ -194,44 +142,7 @@ public class Worker {
 
 	
 
-	private static void recieveMessage() throws IOException {
-
-		// Receive messages
-		System.out.println("Receiving messages from managerQueue.\n");
-		ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(managerSqsURI);
-
-		List<Message> messages = managerSQS.receiveMessage(receiveMessageRequest).getMessages();
-		for (Message message : messages) {
-
-			//get and parse message
-			String[] messageBody = message.getBody().split(" ");
-			String localAppURI = messageBody[0];
-			String inputURI = messageBody[1];
-			int n = Integer.parseInt(messageBody[3]);
-
-
-			//download photos URI list from S3
-			System.out.println("Downloading an object");
-			AmazonS3URI S3URI = new AmazonS3URI(inputURI);
-			S3Object object = S3.getObject(new GetObjectRequest(S3URI.getBucket(), S3URI.getKey())); //TODO: figure out how to use URLs to download instead of bucketname
-			System.out.println("Content-Type: "  + object.getObjectMetadata().getContentType());
-			BufferedReader reader = new BufferedReader(new InputStreamReader(object.getObjectContent()));
-			String line = reader.readLine();
-
-			//for debugging:
-			System.out.println("  Message");
-			System.out.println("    MessageId:     " + message.getMessageId());
-			System.out.println("    ReceiptHandle: " + message.getReceiptHandle());
-			System.out.println("    MD5OfBody:     " + message.getMD5OfBody());
-			System.out.println("    Body:          " + message.getBody());
-			for (Entry<String, String> entry : message.getAttributes().entrySet()) {
-				System.out.println("  Attribute");
-				System.out.println("    Name:  " + entry.getKey());
-				System.out.println("    Value: " + entry.getValue());
-			}
-		}
-		System.out.println();		
-	}
+	
 
 
 
