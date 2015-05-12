@@ -29,6 +29,7 @@ import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.DeleteQueueRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
+import com.amazonaws.services.sqs.model.SendMessageRequest;
 
 public class Worker {
 
@@ -57,6 +58,7 @@ public class Worker {
 		}
 		else
 			workerSqsURI = args[0];
+			//TODO managerSqsURI = args[1];
 
 		//create SQS client
 		workerSQS = new AmazonSQSClient(Credentials);
@@ -77,9 +79,22 @@ public class Worker {
         	URL imgUrl = new URL(imgUrlStr);
         	File newimage = imgResize(imgUrl);
         	System.out.println(imgUrl.getFile());
-        	uploadFileToS3(newimage ,  bucketName);
-  
+        	String key = uploadFileToS3(newimage ,  bucketName);
+        	
+        	//TODO
+        	/*
+        	//send the manager a reciept
+        	S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
+    		String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
+    		System.out.println("Sending a message to managerQueue1.\n");
+			managerSQS.sendMessage(new SendMessageRequest(managerSqsURI, URI));
+        	*/
+        	
+        	//TODO delete message(s)
         }
+        
+        
+        
 /*
 		
 		URL imgurl = new URL("http://25.media.tumblr.com/tumblr_mcs2qmvPwB1qaxd6qo1_1280.gif");
@@ -137,8 +152,8 @@ public class Worker {
 
 		Graphics2D g = newImage.createGraphics();
 		g.drawImage(originalImage, 0, 0, 50, 50, null);
-		File outputfile = new File("imgout");
-		ImageIO.write(newImage, "gif", outputfile);
+		File outputfile = new File("small_" + imgurl.getFile().substring(1));
+		ImageIO.write(newImage, "jpeg", outputfile);
 		g.dispose();
 		return outputfile;
 	}
