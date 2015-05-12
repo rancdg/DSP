@@ -58,7 +58,7 @@ public class Worker {
 		}
 		else
 			workerSqsURI = args[0];
-			//TODO managerSqsURI = args[1];
+			//TODO managerSqsURI = args[1]; Will only be possible after deleting WorkerMaker
 
 		//create SQS client
 		workerSQS = new AmazonSQSClient(Credentials);
