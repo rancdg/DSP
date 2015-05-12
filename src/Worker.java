@@ -25,6 +25,7 @@ import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClient;
+import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.DeleteQueueRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
@@ -32,57 +33,61 @@ import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 public class Worker {
 
 	public static String managerSqsURI;
+	public static String workerSqsURI;
+	public static String bucketName = "eranfiles99";
 	public static PropertiesCredentials Credentials;
 	public static AmazonS3 S3;
 	public static String propertiesFilePath = "cred.properties";
 	public static AmazonSQS managerSQS;
-
-	private static File imgResize(URL imgurl) throws IOException{
-		BufferedImage originalImage = ImageIO.read(imgurl);
-		BufferedImage newImage = new BufferedImage(50, 50, BufferedImage.TYPE_INT_RGB);
-
-		Graphics2D g = newImage.createGraphics();
-		g.drawImage(originalImage, 0, 0, 50, 50, null);
-		File outputfile = new File("imgout");
-		ImageIO.write(newImage, "gif", outputfile);
-		g.dispose();
-		return outputfile;
-	}
+	public static AmazonSQS workerSQS;
 	
-	private static String uploadFileToS3(File uploadFile , String bucketName) throws FileNotFoundException,
-	IOException, InterruptedException{
-		
-		
-		// If the bucket doesn't exist - will create it.
-		// Notice - this will create it in the default region :Region.US_Standard
-		if (!S3.doesBucketExist(bucketName)) {
-			System.out.println("Bucket doesn't exist. Creating it.");
-			S3.createBucket(bucketName);
-		}
-		else
-			System.out.println("Bucket exists.");
-		PutObjectRequest por = new PutObjectRequest(bucketName, uploadFile.getName(), uploadFile);
-		// Upload the file
-		S3.putObject(por);
-		System.out.println("File uploaded.");
-		return uploadFile.getName();
-
-	}
-
 	public static void main(String[] args) throws FileNotFoundException,
 	IOException, InterruptedException{
 		
 		Credentials = new PropertiesCredentials(
-		new FileInputStream(propertiesFilePath));
+				new FileInputStream(propertiesFilePath));
 		S3 = new AmazonS3Client(Credentials);
 		System.out.println("AmazonS3Client created.");
+		
+		
+		//Parse
+		if (args.length>1){
+			System.err.println("Invalid arguments");
+			System.exit(1);
+		}
+		else
+			workerSqsURI = args[0];
+
+		//create SQS client
+		workerSQS = new AmazonSQSClient(Credentials);
+		S3 = new AmazonS3Client(Credentials);
+		Region usEast1 = Region.getRegion(Regions.US_EAST_1);
+		workerSQS.setRegion(usEast1);
+		S3.setRegion(usEast1);
+		
+		System.out.println("Receiving messages from workerQueue.\n");
+        ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(workerSqsURI);
+        
+        List<Message> messages = workerSQS.receiveMessage(receiveMessageRequest).getMessages();
+        for (Message message : messages) {
+            
+        	//get and parse message
+        	String messageBody = message.getBody();
+        	String imgUrlStr = messageBody;
+        	URL imgUrl = new URL(imgUrlStr);
+        	File newimage = imgResize(imgUrl);
+        	System.out.println(imgUrl.getFile());
+        	uploadFileToS3(newimage ,  bucketName);
+  
+        }
+/*
+		
 		URL imgurl = new URL("http://25.media.tumblr.com/tumblr_mcs2qmvPwB1qaxd6qo1_1280.gif");
 		File img = imgResize(imgurl);
 		String bucketName = "raneran15imgtest";
 		uploadFileToS3(img , bucketName);
 		
 		
-		/*
 		Credentials = new PropertiesCredentials(
 		
 				new FileInputStream(propertiesFilePath));
@@ -125,6 +130,40 @@ public class Worker {
 			System.out.println("Error Message: " + ace.getMessage());
 		}*/
 	}
+
+	private static File imgResize(URL imgurl) throws IOException{
+		BufferedImage originalImage = ImageIO.read(imgurl);
+		BufferedImage newImage = new BufferedImage(50, 50, BufferedImage.TYPE_INT_RGB);
+
+		Graphics2D g = newImage.createGraphics();
+		g.drawImage(originalImage, 0, 0, 50, 50, null);
+		File outputfile = new File("imgout");
+		ImageIO.write(newImage, "gif", outputfile);
+		g.dispose();
+		return outputfile;
+	}
+	
+	private static String uploadFileToS3(File uploadFile , String bucketName) throws FileNotFoundException,
+	IOException, InterruptedException{
+		
+		
+		// If the bucket doesn't exist - will create it.
+		// Notice - this will create it in the default region :Region.US_Standard
+		if (!S3.doesBucketExist(bucketName)) {
+			System.out.println("Bucket doesn't exist. Creating it.");
+			S3.createBucket(bucketName);
+		}
+		else
+			System.out.println("Bucket exists.");
+		PutObjectRequest por = new PutObjectRequest(bucketName, uploadFile.getName(), uploadFile);
+		// Upload the file
+		S3.putObject(por);
+		System.out.println("File uploaded.");
+		return uploadFile.getName();
+
+	}
+
+	
 
 	private static void recieveMessage() throws IOException {
 
