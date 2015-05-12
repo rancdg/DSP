@@ -56,12 +56,14 @@ public class WorkerMaker {
 				"workerQueue"); //maybe extrapolate
 		String workerQUrl = workerSQS.createQueue(workerQueueRequest).getQueueUrl();
 		
-		System.out.println("Sending a message to managerQueue1.\n");
-		String message = "http://25.media.tumblr.com/tumblr_mcs2qmvPwB1qaxd6qo1_1280.gif";
+		System.out.println("Sending a message to workerQueue1.\n");
+		String message = "http://1.bp.blogspot.com/-PhbcHgYDsPs/UFd16R2aSxI/AAAAAAAAChQ/hOKX9SrMScs/s1600/costume3.jpeg";
 		workerSQS.sendMessage(new SendMessageRequest(workerQUrl, message));
 
 		createWorker(workerQUrl);
 		//requestManager();
+		
+		
 	}
 
 	private static void createWorker(String SqsURI) throws FileNotFoundException, IOException, InterruptedException{
