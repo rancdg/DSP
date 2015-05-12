@@ -76,6 +76,7 @@ public class Worker {
         	//get and parse message
         	String messageBody = message.getBody();
         	String imgUrlStr = messageBody;
+        	System.out.println("Incoming message: " + imgUrlStr);
         	URL imgUrl = new URL(imgUrlStr);
         	File newimage = imgResize(imgUrl);
         	System.out.println(imgUrl.getFile());
@@ -91,7 +92,10 @@ public class Worker {
         	*/
         	
         	//TODO delete message(s)
+        	DeleteMessageRequest del = new DeleteMessageRequest(workerSqsURI, message.getReceiptHandle());
+        	workerSQS.deleteMessage(del);
         }
+        
         
         
         
@@ -152,8 +156,13 @@ public class Worker {
 
 		Graphics2D g = newImage.createGraphics();
 		g.drawImage(originalImage, 0, 0, 50, 50, null);
-		File outputfile = new File("small_" + imgurl.getFile().substring(1));
-		ImageIO.write(newImage, "jpeg", outputfile);
+		
+		//Get the file name
+		String[] tmp = imgurl.getFile().split("/");
+		File outputfile = new File("small_" + tmp[tmp.length - 1]);
+		
+		ImageIO.write(newImage, getImageFormat(outputfile.getName()), outputfile);
+		
 		g.dispose();
 		return outputfile;
 	}
@@ -176,6 +185,11 @@ public class Worker {
 		System.out.println("File uploaded.");
 		return uploadFile.getName();
 
+	}
+	
+	private static String getImageFormat(String img){
+		String[] tmp = img.split("\\.");
+		return tmp[tmp.length - 1];
 	}
 
 	
