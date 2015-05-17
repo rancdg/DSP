@@ -20,6 +20,7 @@ import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3URI;
+import com.amazonaws.services.s3.model.CannedAccessControlList;
 import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
@@ -41,7 +42,7 @@ public class Worker {
 	public static String propertiesFilePath = "cred.properties";
 	public static AmazonSQS managerSQS;
 	public static AmazonSQS workerSQS;
-	
+
 	/**
 	 * 
 	 * @param args - {String workerQueueURI, String managerQueueURI}
@@ -51,21 +52,21 @@ public class Worker {
 	 */
 	public static void main(String[] args) throws FileNotFoundException,
 	IOException, InterruptedException{
-		
+
 		Credentials = new PropertiesCredentials(
 				new FileInputStream(propertiesFilePath));
 		S3 = new AmazonS3Client(Credentials);
 		System.out.println("AmazonS3Client created.");
-		
-		
+
+
 		//Parse
-		if (args.length>1){
+		if (args.length>2){
 			System.err.println("Invalid arguments");
 			System.exit(1);
 		}
 		else
 			workerSqsURI = args[0];
-			//TODO managerSqsURI = args[1]; Will only be possible after deleting WorkerMaker
+		managerSqsURI = args[1]; //Will only be possible after deleting WorkerMaker
 
 		//create SQS client
 		workerSQS = new AmazonSQSClient(Credentials);
@@ -73,36 +74,40 @@ public class Worker {
 		Region usEast1 = Region.getRegion(Regions.US_EAST_1);
 		workerSQS.setRegion(usEast1);
 		S3.setRegion(usEast1);
-		
+
 		System.out.println("Receiving messages from workerQueue.\n");
-        ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(workerSqsURI);
-        
-        List<Message> messages = workerSQS.receiveMessage(receiveMessageRequest).getMessages();
-        for (Message message : messages) {
-            
-        	//get and parse message
-        	String messageBody = message.getBody();
-        	String imgUrlStr = messageBody;
-        	System.out.println("Incoming message: " + imgUrlStr);
-        	URL imgUrl = new URL(imgUrlStr);
-        	File newimage = imgResize(imgUrl);
-        	System.out.println(imgUrl.getFile());
-        	String key = uploadFileToS3(newimage ,  bucketName);
-        	
-        	//TODO
-        	/*
-        	//send the manager a reciept - need to know manager's queue
-        	S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
-    		String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
-    		System.out.println("Sending a message to managerQueue1.\n");
-			managerSQS.sendMessage(new SendMessageRequest(managerSqsURI, URI));
-        	*/
-        	
-        	//Delete message
-        	DeleteMessageRequest del = new DeleteMessageRequest(workerSqsURI, message.getReceiptHandle());
-        	workerSQS.deleteMessage(del);
-        }
-  
+		ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(workerSqsURI);
+		List<Message> messages = null;
+		do{
+			messages = workerSQS.receiveMessage(receiveMessageRequest).getMessages();
+			for (Message message : messages) {
+
+				//get and parse message
+				String[] messageBody = message.getBody().split(" ");
+				String imgUrlStr = messageBody[0];
+				String appId = messageBody[1];
+				System.out.println("Incoming message: " + imgUrlStr);
+				URL imgUrl = new URL(imgUrlStr);
+				File newimage = imgResize(imgUrl);
+				System.out.println(imgUrl.getFile());
+				String key = uploadFileToS3(newimage ,  bucketName);
+
+
+				//send response to manager
+				S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
+				String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
+				System.out.println("Sending a message to managerQueue1.\n");
+				String returnMessage = "workerMessage "+ URI + " " + imgUrlStr + appId;
+				managerSQS.sendMessage(new SendMessageRequest(managerSqsURI, returnMessage));
+
+
+				//Delete message
+				DeleteMessageRequest del = new DeleteMessageRequest(workerSqsURI, message.getReceiptHandle());
+				workerSQS.deleteMessage(del);
+			}
+
+		}
+		while (messages!=null);
 	}
 
 	//A helper function which does the "work" - 
@@ -115,21 +120,21 @@ public class Worker {
 
 		Graphics2D g = newImage.createGraphics();
 		g.drawImage(originalImage, 0, 0, 50, 50, null);
-		
+
 		//Get the file name
 		String[] tmp = imgurl.getFile().split("/");
 		File outputfile = new File("small_" + tmp[tmp.length - 1]);
-		
+
 		ImageIO.write(newImage, getImageFormat(outputfile.getName()), outputfile);
-		
+
 		g.dispose();
 		return outputfile;
 	}
-	
+
 	private static String uploadFileToS3(File uploadFile , String bucketName) throws FileNotFoundException,
 	IOException, InterruptedException{
-		
-		
+
+
 		// If the bucket doesn't exist - will create it.
 		// Notice - this will create it in the default region :Region.US_Standard
 		if (!S3.doesBucketExist(bucketName)) {
@@ -140,21 +145,22 @@ public class Worker {
 			System.out.println("Bucket exists.");
 		PutObjectRequest por = new PutObjectRequest(bucketName, uploadFile.getName(), uploadFile);
 		// Upload the file
+		por.withCannedAcl(CannedAccessControlList.PublicRead);
 		S3.putObject(por);
 		System.out.println("File uploaded.");
 		return uploadFile.getName();
 
 	}
-	
+
 	//A helper function to obtain the image format
 	private static String getImageFormat(String img){
 		String[] tmp = img.split("\\.");
 		return tmp[tmp.length - 1];
 	}
 
-	
 
-	
+
+
 
 
 
