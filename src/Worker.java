@@ -64,9 +64,10 @@ public class Worker {
 			System.err.println("Invalid arguments");
 			System.exit(1);
 		}
-		else
+		else{
 			workerSqsURI = args[0];
-		managerSqsURI = args[1]; //Will only be possible after deleting WorkerMaker
+			managerSqsURI = args[1]; 
+		}
 
 		//create SQS client
 		workerSQS = new AmazonSQSClient(Credentials);
@@ -96,9 +97,10 @@ public class Worker {
 				//send response to manager
 				S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
 				String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
-				System.out.println("Sending a message to managerQueue1.\n");
-				String returnMessage = "workerMessage "+ URI + " " + imgUrlStr + appId;
-				managerSQS.sendMessage(new SendMessageRequest(managerSqsURI, returnMessage));
+				System.out.println("Sending a message to managerQueue.\n");
+				String returnMessage = "workerMessage ";/*+ URI + " " + imgUrlStr + " " +appId;*/
+				SendMessageRequest sendRequest2 = new SendMessageRequest(URI, returnMessage);
+				managerSQS.sendMessage(sendRequest2);
 
 
 				//Delete message

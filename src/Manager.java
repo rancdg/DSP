@@ -41,6 +41,8 @@ import com.amazonaws.services.sqs.model.CreateQueueRequest;
 import com.amazonaws.services.sqs.model.DeleteQueueRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
+import com.amazonaws.services.sqs.model.SendMessageBatchRequest;
+import com.amazonaws.services.sqs.model.SendMessageBatchRequestEntry;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 
 public class Manager {
@@ -95,14 +97,14 @@ public class Manager {
 			System.out.println("Error Message: " + ace.getMessage());
 		}
 
-		recieveMessage();
+		recieveMessage(managerSqsURI);
 
 		//delete queue:
 		// Delete a queue
 		deleteQueue(managerSqsURI);
 	}
 
-	private static void recieveMessage() throws IOException, InterruptedException {
+	private static void recieveMessage(String managerSqsURI) throws IOException, InterruptedException {
 
 		// Receive messages
 		System.out.println("Receiving messages from managerQueue.\n");
@@ -112,7 +114,6 @@ public class Manager {
 		for (Message message : messages) {
 
 			//get and parse message
-
 			String[] messageBody = message.getBody().split(" ");
 			int n = 1;
 			String messageType = null;
@@ -120,6 +121,7 @@ public class Manager {
 			String localAppURI = null;
 			String inputURI = null;
 			messageType = messageBody[0];
+			
 			//deal with an app message
 			if (messageType.equals("appMessage")){
 				localAppURI = messageBody[1];
@@ -143,19 +145,22 @@ public class Manager {
 				//count jobs and insert them to task queue:
 				int countJobs = 0;
 				String line = reader.readLine();
+				System.out.println("building and counting tasks for appId-"+appId);
+				List<SendMessageBatchRequestEntry> messageEntries = new ArrayList<>();
 				while (line!=null){
-					//send the message
-					String jobMessage = line + " " + appId;
-					SendMessageRequest sendRequest = new SendMessageRequest(taskQUrl, jobMessage);
-					taskSQS.sendMessage(sendRequest);
+					//build the message batch
+					String jobMessage = line + " " + appId;					
+					messageEntries.add(new SendMessageBatchRequestEntry(String.valueOf(countJobs), jobMessage));					
 					countJobs++;
 					line = reader.readLine();
 				}
-				
+				SendMessageBatchRequest sendRequest = new SendMessageBatchRequest(taskQUrl, messageEntries);
+				taskSQS.sendMessageBatch(sendRequest);
+				System.out.println("counted "+ countJobs + " jobs");
 				//initialize urlTable for this app
 				urlTable.put(appId, new ArrayList<String>());
 
-				//wake up workers
+				//figure out how many workers needed
 				int neededWorkers = 0;
 				if (countJobs%n!=0){
 					//1 more worker for the jobs/n remaining
@@ -167,6 +172,8 @@ public class Manager {
 				
 				AmazonEC2 ec2 = new AmazonEC2Client(Credentials);
 				
+				//waking up workers
+				System.out.println("waking up " + neededWorkers + " needed workers");
 				for (int i = 0 ; i<neededWorkers ; i++){
 					
 					try
@@ -175,7 +182,7 @@ public class Manager {
 		                Thread.sleep(1000L);
 		                request.setInstanceType(InstanceType.T2Micro.toString());
 		                request.setUserData(returnUserData());
-		                request.setKeyName("ranEran");
+		                request.setKeyName("raneran");
 		                RunInstancesResult runInstances = ec2.runInstances(request);
 		                List instances2 = runInstances.getReservation().getInstances();
 		                for(Iterator iterator = instances2.iterator(); iterator.hasNext(); System.out.println("Creating a new instance"))
@@ -198,11 +205,14 @@ public class Manager {
 		                System.out.println((new StringBuilder("Error Code: ")).append(ase.getErrorCode()).toString());
 		                System.out.println((new StringBuilder("Request ID: ")).append(ase.getRequestId()).toString());
 		            }
-					activeWorkersAmount++;
+					
 //					String[] args = new String[2];
 //					args[0] = taskQUrl;
 //					args[1] = managerSqsURI;
 //					Worker.main(args);
+					
+					activeWorkersAmount++;
+
 				}
 			}	
 			else if (messageType.equals("workerMessage")){
@@ -211,16 +221,17 @@ public class Manager {
 				String origImgUrl = messageBody[2];
 				String returnedAppId = messageBody[3];
 				
+				System.out.println("processing a worker message");
 				//add to list
 				List<String> urlList = urlTable.get(receiveMessageRequest);
 				urlList.add(newImgUrl + " " + origImgUrl);
 				
 				//generate HTML if needed
 				if (urlList.size() == schedulingTable.get(returnedAppId)){
+					System.out.println("generating an html");
 					String HTMLUrl = generateHTML(urlList,returnedAppId);
-					String returnToAppMessage = HTMLUrl;
-					
-					SendMessageRequest sendRequest = new SendMessageRequest(appId_SQS_lookupTable.get(appId), returnToAppMessage);
+					System.out.println("generated this url: " + HTMLUrl);
+					SendMessageRequest sendRequest = new SendMessageRequest(appId_SQS_lookupTable.get(appId), HTMLUrl);
 					managerSQS.sendMessage(sendRequest);
 				}
 			}
@@ -331,11 +342,11 @@ private static String returnUserData() {
     	builder.append(System.getProperty("line.separator"));
     	builder.append("mkdir manager");
     	builder.append(System.getProperty("line.separator"));
-    	builder.append("wget https://s3.amazonaws.com/eranfiles99/Worker.jar > & wget.log");
+    	builder.append("wget https://s3.amazonaws.com/eranfiles99/Worker.jar >& wget.log");
     	builder.append(System.getProperty("line.separator"));
-    	builder.append("echo \"secretKey="+Credentials.getAWSSecretKey()+"\" > AwsCredentials.properties");
+    	builder.append("echo \"secretKey="+Credentials.getAWSSecretKey()+"\" > cred.properties");
     	builder.append(System.getProperty("line.separator"));
-    	builder.append("echo \"accessKey="+Credentials.getAWSAccessKeyId()+"\" >> AwsCredentials.properties");
+    	builder.append("echo \"accessKey="+Credentials.getAWSAccessKeyId()+"\" >> cred.properties");
     	builder.append(System.getProperty("line.separator"));
     	builder.append("java -jar Worker.jar "+taskQUrl +" "+ managerSqsURI + " >& Worker.log");
     	builder.append(System.getProperty("line.separator"));

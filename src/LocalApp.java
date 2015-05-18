@@ -82,7 +82,7 @@ public class LocalApp{
 			String key = uploadUrlsToS3(inputFile);
 			String sqsURI = loadToSQS(key);
 			AmazonEC2 ec2 = new AmazonEC2Client(Credentials);
-			managerExists = checkManagerExists(ec2);
+			//managerExists = checkManagerExists(ec2);
 			if (!managerExists){
 				
 				//if manager doesnt exist, load pics url's to manager's queue and start the manager				 
@@ -92,7 +92,7 @@ public class LocalApp{
 	                Thread.sleep(1000L);	                
 	                request.setInstanceType(InstanceType.T2Micro.toString());
 	                request.setUserData(returnUserData(sqsURI));
-	                request.setKeyName("raneran");
+	                request.setKeyName("raneran");	               
 	                RunInstancesResult runInstances = ec2.runInstances(request);
 	                List instances2 = runInstances.getReservation().getInstances();
 	                for(Iterator iterator = instances2.iterator(); iterator.hasNext(); System.out.println("Creating a new instance"))
@@ -127,8 +127,9 @@ public class LocalApp{
 				System.out.println("Receiving messages from managerQueue.\n");
 				ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(localAppQUrl);
 				AmazonSQS appSQS = new AmazonSQSClient(Credentials);
+				receiveMessageRequest.setWaitTimeSeconds(20);
 				List<Message> messages = appSQS.receiveMessage(receiveMessageRequest).getMessages();
-				if (messages != null){
+				if (messages.size() != 0){
 					for (Message message : messages) {
 						String messageBody = message.getBody();
 						System.out.println("HTML address:     "+ messageBody);
@@ -137,6 +138,7 @@ public class LocalApp{
 				}
 				else
 					Thread.sleep(1000L);
+					System.out.println("Waiting");
 			}
 			
 		}
@@ -145,10 +147,6 @@ public class LocalApp{
 			System.err.println("Invalid arguments");
 			System.exit(1);
 		}
-
-
-
-		//requestManager();
 
 	}
 
@@ -269,15 +267,15 @@ public class LocalApp{
 	private static String returnUserData(String sqsURI) {
 		
 		StringBuilder builder = new StringBuilder();   	
-    	builder.append("#! /bin/bash");
+    	builder.append("#! /bin/bash -xe");
     	builder.append(System.getProperty("line.separator"));
     	builder.append("mkdir manager");
     	builder.append(System.getProperty("line.separator"));
-    	builder.append("wget https://s3.amazonaws.com/eranfiles99/Manager.jar > & wget.log");
+    	builder.append("wget https://s3.amazonaws.com/eranfiles99/Manager.jar >& wget.log");
     	builder.append(System.getProperty("line.separator"));
-    	builder.append("echo \"secretKey="+Credentials.getAWSSecretKey()+"\" > AwsCredentials.properties");
+    	builder.append("echo \"secretKey="+Credentials.getAWSSecretKey()+"\" > cred.properties");
     	builder.append(System.getProperty("line.separator"));
-    	builder.append("echo \"accessKey="+Credentials.getAWSAccessKeyId()+"\" >> AwsCredentials.properties");
+    	builder.append("echo \"accessKey="+Credentials.getAWSAccessKeyId()+"\" >> cred.properties");
     	builder.append(System.getProperty("line.separator"));
     	builder.append("java -jar Manager.jar "+sqsURI+" >& Manager.log");
     	builder.append(System.getProperty("line.separator"));
