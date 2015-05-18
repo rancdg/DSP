@@ -71,9 +71,11 @@ public class Worker {
 
 		//create SQS client
 		workerSQS = new AmazonSQSClient(Credentials);
+		managerSQS = new AmazonSQSClient(Credentials);
 		S3 = new AmazonS3Client(Credentials);
 		Region usEast1 = Region.getRegion(Regions.US_EAST_1);
 		workerSQS.setRegion(usEast1);
+		managerSQS.setRegion(usEast1);
 		S3.setRegion(usEast1);
 
 		System.out.println("Receiving messages from workerQueue.\n");
@@ -98,8 +100,8 @@ public class Worker {
 				S3Object obj = S3.getObject(new GetObjectRequest(bucketName, key));
 				String URI = obj.getObjectContent().getHttpRequest().getURI().toString();
 				System.out.println("Sending a message to managerQueue.\n");
-				String returnMessage = "workerMessage ";/*+ URI + " " + imgUrlStr + " " +appId;*/
-				SendMessageRequest sendRequest2 = new SendMessageRequest(URI, returnMessage);
+				String returnMessage = "workerMessage "+ URI + " " + imgUrlStr + " " +appId;
+				SendMessageRequest sendRequest2 = new SendMessageRequest(managerSqsURI, returnMessage);
 				managerSQS.sendMessage(sendRequest2);
 
 
@@ -109,7 +111,7 @@ public class Worker {
 			}
 
 		}
-		while (messages!=null);
+		while (messages.size()!=0);
 	}
 
 	//A helper function which does the "work" - 
@@ -124,8 +126,8 @@ public class Worker {
 		g.drawImage(originalImage, 0, 0, 50, 50, null);
 
 		//Get the file name
-		String[] tmp = imgurl.getFile().split("/");
-		File outputfile = new File("small_" + tmp[tmp.length - 1]);
+		String tmp = imgurl.getFile().replace('/', '_');
+		File outputfile = new File("small_" + tmp);
 
 		ImageIO.write(newImage, getImageFormat(outputfile.getName()), outputfile);
 

@@ -38,6 +38,7 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
+import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.DeleteQueueRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
@@ -54,6 +55,7 @@ public class Manager {
 	public static String propertiesFilePath = "cred.properties";
 	public static AmazonSQS managerSQS;
 	public static AmazonSQS taskSQS;
+	public static AmazonSQS localAppSQS;
 	public static String taskQUrl = null;
 	public static int activeWorkersAmount = 0;
 	public static Map<String,List<String>> urlTable = new HashMap<>(); //<appId , urls>
@@ -109,150 +111,175 @@ public class Manager {
 		// Receive messages
 		System.out.println("Receiving messages from managerQueue.\n");
 		ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(managerSqsURI);
+		List<Message> messages = null;
+		do {
+			messages = managerSQS.receiveMessage(
+					receiveMessageRequest).getMessages();
+			for (Message message : messages) {
 
-		List<Message> messages = managerSQS.receiveMessage(receiveMessageRequest).getMessages();
-		for (Message message : messages) {
+				//get and parse message
+				String[] messageBody = message.getBody().split(" ");
+				int n = 1;
+				String messageType = null;
+				String appId = null;
+				String localAppURI = null;
+				String inputURI = null;
+				messageType = messageBody[0];
 
-			//get and parse message
-			String[] messageBody = message.getBody().split(" ");
-			int n = 1;
-			String messageType = null;
-			String appId = null;
-			String localAppURI = null;
-			String inputURI = null;
-			messageType = messageBody[0];
-			
-			//deal with an app message
-			if (messageType.equals("appMessage")){
-				localAppURI = messageBody[1];
-				inputURI = messageBody[2];
+				//deal with an app message
+				if (messageType.equals("appMessage")) {
+					localAppURI = messageBody[1];
+					inputURI = messageBody[2];
 
-				if (messageBody.length >=4)
-					n = Integer.parseInt(messageBody[3]);
-				if (messageBody.length >=5)
-					appId = messageBody[4];
-				
-				//add to lookup
-				appId_SQS_lookupTable.put(appId, localAppURI);
-				
-				//download photos URI list from S3
-				System.out.println("Downloading an object");
-				AmazonS3URI S3URI = new AmazonS3URI(inputURI);
-				S3Object object = S3.getObject(new GetObjectRequest(S3URI.getBucket(), S3URI.getKey()));
-				System.out.println("Content-Type: "  + object.getObjectMetadata().getContentType());
-				BufferedReader reader = new BufferedReader(new InputStreamReader(object.getObjectContent()));				
+					if (messageBody.length >= 4)
+						n = Integer.parseInt(messageBody[3]);
+					if (messageBody.length >= 5)
+						appId = messageBody[4];
 
-				//count jobs and insert them to task queue:
-				int countJobs = 0;
-				String line = reader.readLine();
-				System.out.println("building and counting tasks for appId-"+appId);
-				List<SendMessageBatchRequestEntry> messageEntries = new ArrayList<>();
-				while (line!=null){
-					//build the message batch
-					String jobMessage = line + " " + appId;					
-					messageEntries.add(new SendMessageBatchRequestEntry(String.valueOf(countJobs), jobMessage));					
-					countJobs++;
-					line = reader.readLine();
-				}
-				SendMessageBatchRequest sendRequest = new SendMessageBatchRequest(taskQUrl, messageEntries);
-				taskSQS.sendMessageBatch(sendRequest);
-				System.out.println("counted "+ countJobs + " jobs");
-				//initialize urlTable for this app
-				urlTable.put(appId, new ArrayList<String>());
+					//add to lookup
+					appId_SQS_lookupTable.put(appId, localAppURI);
 
-				//figure out how many workers needed
-				int neededWorkers = 0;
-				if (countJobs%n!=0){
-					//1 more worker for the jobs/n remaining
-					neededWorkers = 1;
-				}
+					//download photos URI list from S3
+					System.out.println("Downloading an object");
+					AmazonS3URI S3URI = new AmazonS3URI(inputURI);
+					S3Object object = S3.getObject(new GetObjectRequest(S3URI
+							.getBucket(), S3URI.getKey()));
+					System.out.println("Content-Type: "
+							+ object.getObjectMetadata().getContentType());
+					BufferedReader reader = new BufferedReader(
+							new InputStreamReader(object.getObjectContent()));
 
-				if (countJobs/n != 0)
-					neededWorkers += countJobs/n - activeWorkersAmount;
-				
-				AmazonEC2 ec2 = new AmazonEC2Client(Credentials);
-				
-				//waking up workers
-				System.out.println("waking up " + neededWorkers + " needed workers");
-				for (int i = 0 ; i<neededWorkers ; i++){
+					//count jobs and insert them to task queue:
+					int countJobs = 0;
+					String line = reader.readLine();
+					System.out.println("building and counting tasks for appId-"
+							+ appId);
+					List<SendMessageBatchRequestEntry> messageEntries = new ArrayList<>();
+					while (line != null) {
+						//build the message batch
+						String jobMessage = line + " " + appId;
+						messageEntries.add(new SendMessageBatchRequestEntry(
+								String.valueOf(countJobs), jobMessage));
+						countJobs++;
+						line = reader.readLine();
+					}
+					SendMessageBatchRequest sendRequest = new SendMessageBatchRequest(
+							taskQUrl, messageEntries);
+					taskSQS.sendMessageBatch(sendRequest);
+					System.out.println("counted " + countJobs + " jobs");
 					
-					try
-		            {
-		                RunInstancesRequest request = new RunInstancesRequest("ami-146e2a7c", 1, 1);
-		                Thread.sleep(1000L);
-		                request.setInstanceType(InstanceType.T2Micro.toString());
-		                request.setUserData(returnUserData());
-		                request.setKeyName("raneran");
-		                RunInstancesResult runInstances = ec2.runInstances(request);
-		                List instances2 = runInstances.getReservation().getInstances();
-		                for(Iterator iterator = instances2.iterator(); iterator.hasNext(); System.out.println("Creating a new instance"))
-		                {
-		                    Instance instance = (Instance)iterator.next();
-		                    CreateTagsRequest createTagsRequest = new CreateTagsRequest();
-		                    createTagsRequest.withResources(new String[] {
-		                        instance.getInstanceId()
-		                    }).withTags(new Tag[] {
-		                        new Tag("instanceType", "Worker")
-		                    });
-		                    ec2.createTags(createTagsRequest);
-		                }
+					//initialize urlTable for this app
+					urlTable.put(appId, new ArrayList<String>());
+					schedulingTable.put(appId, countJobs);
 
-		            }
-		            catch(AmazonServiceException ase)
-		            {
-		                System.out.println((new StringBuilder("Caught Exception: ")).append(ase.getMessage()).toString());
-		                System.out.println((new StringBuilder("Reponse Status Code: ")).append(ase.getStatusCode()).toString());
-		                System.out.println((new StringBuilder("Error Code: ")).append(ase.getErrorCode()).toString());
-		                System.out.println((new StringBuilder("Request ID: ")).append(ase.getRequestId()).toString());
-		            }
-					
-//					String[] args = new String[2];
-//					args[0] = taskQUrl;
-//					args[1] = managerSqsURI;
-//					Worker.main(args);
-					
-					activeWorkersAmount++;
+					//figure out how many workers needed
+					int neededWorkers = 0;
+					if (countJobs % n != 0) {
+						//1 more worker for the jobs/n remaining
+						neededWorkers = 1;
+					}
 
+					if (countJobs / n != 0)
+						neededWorkers += countJobs / n - activeWorkersAmount;
+
+					AmazonEC2 ec2 = new AmazonEC2Client(Credentials);
+
+					//waking up workers
+					System.out.println("waking up " + neededWorkers
+							+ " needed workers");
+					for (int i = 0; i < neededWorkers; i++) {
+
+											try
+								            {
+								                RunInstancesRequest request = new RunInstancesRequest("ami-146e2a7c", 1, 1);
+								                Thread.sleep(1000L);
+								                request.setInstanceType(InstanceType.T2Micro.toString());
+								                request.setUserData(returnUserData());
+								                request.setKeyName("raneran");
+								                RunInstancesResult runInstances = ec2.runInstances(request);
+								                List instances2 = runInstances.getReservation().getInstances();
+								                for(Iterator iterator = instances2.iterator(); iterator.hasNext(); System.out.println("Creating a new instance"))
+								                {
+								                    Instance instance = (Instance)iterator.next();
+								                    CreateTagsRequest createTagsRequest = new CreateTagsRequest();
+								                    createTagsRequest.withResources(new String[] {
+								                        instance.getInstanceId()
+								                    }).withTags(new Tag[] {
+								                        new Tag("instanceType", "Worker")
+								                    });
+								                    ec2.createTags(createTagsRequest);
+								                }
+						
+								            }
+								            catch(AmazonServiceException ase)
+								            {
+								                System.out.println((new StringBuilder("Caught Exception: ")).append(ase.getMessage()).toString());
+								                System.out.println((new StringBuilder("Reponse Status Code: ")).append(ase.getStatusCode()).toString());
+								                System.out.println((new StringBuilder("Error Code: ")).append(ase.getErrorCode()).toString());
+								                System.out.println((new StringBuilder("Request ID: ")).append(ase.getRequestId()).toString());
+								            }
+
+//						String[] args = new String[2];
+//						args[0] = taskQUrl;
+//						args[1] = managerSqsURI;
+//						Worker.main(args);
+
+						activeWorkersAmount++;
+
+					}
+				} else if (messageType.equals("workerMessage")) {
+					//parse
+					String newImgUrl = messageBody[1];
+					String origImgUrl = messageBody[2];
+					String returnedAppId = messageBody[3];
+
+					System.out.println("processing a worker message");
+					//add to list
+					List<String> urlList = urlTable.get(returnedAppId);
+					String doubleUrl = newImgUrl + " " + origImgUrl;
+					urlList.add(doubleUrl);
+
+					//generate HTML if needed
+					if (urlList.size() == schedulingTable.get(returnedAppId)) {
+						System.out.println("generating an html");
+						String HTMLkey = generateHTML(urlList, returnedAppId);
+						S3Object obj = S3.getObject(new GetObjectRequest(bucketName, HTMLkey));
+						String HTMLUrl = obj.getObjectContent().getHttpRequest().getURI().toString();
+						
+						System.out.println("generated this url: " + HTMLUrl);
+						localAppSQS = new AmazonSQSClient(Credentials);
+						Region usEast1 = Region.getRegion(Regions.US_EAST_1);
+						localAppSQS.setRegion(usEast1);
+						SendMessageRequest sendRequest3 = new SendMessageRequest(appId_SQS_lookupTable.get(returnedAppId), HTMLUrl);
+						localAppSQS.sendMessage(sendRequest3);
+					}
 				}
-			}	
-			else if (messageType.equals("workerMessage")){
-				//parse
-				String newImgUrl = messageBody[1];
-				String origImgUrl = messageBody[2];
-				String returnedAppId = messageBody[3];
-				
-				System.out.println("processing a worker message");
-				//add to list
-				List<String> urlList = urlTable.get(receiveMessageRequest);
-				urlList.add(newImgUrl + " " + origImgUrl);
-				
-				//generate HTML if needed
-				if (urlList.size() == schedulingTable.get(returnedAppId)){
-					System.out.println("generating an html");
-					String HTMLUrl = generateHTML(urlList,returnedAppId);
-					System.out.println("generated this url: " + HTMLUrl);
-					SendMessageRequest sendRequest = new SendMessageRequest(appId_SQS_lookupTable.get(appId), HTMLUrl);
-					managerSQS.sendMessage(sendRequest);
+
+				//for debugging:
+				System.out.println("  Message");
+				System.out.println("    MessageId:     "
+						+ message.getMessageId());
+				System.out.println("    ReceiptHandle: "
+						+ message.getReceiptHandle());
+				System.out.println("    MD5OfBody:     "
+						+ message.getMD5OfBody());
+				System.out.println("    Body:          " + message.getBody());
+				//System.out.println("    appId:          " + appId);
+				//System.out.println("    messageType:          " + messageType);
+
+				for (Entry<String, String> entry : message.getAttributes()
+						.entrySet()) {
+					System.out.println("  Attribute");
+					System.out.println("    Name:  " + entry.getKey());
+					System.out.println("    Value: " + entry.getValue());
 				}
+				
+				//Delete message
+				DeleteMessageRequest del = new DeleteMessageRequest(managerSqsURI, message.getReceiptHandle());
+				managerSQS.deleteMessage(del);
+				
 			}
-
-
-
-			//for debugging:
-			System.out.println("  Message");
-			System.out.println("    MessageId:     " + message.getMessageId());
-			System.out.println("    ReceiptHandle: " + message.getReceiptHandle());
-			System.out.println("    MD5OfBody:     " + message.getMD5OfBody());
-			System.out.println("    Body:          " + message.getBody());
-			//System.out.println("    appId:          " + appId);
-			//System.out.println("    messageType:          " + messageType);
-
-			for (Entry<String, String> entry : message.getAttributes().entrySet()) {
-				System.out.println("  Attribute");
-				System.out.println("    Name:  " + entry.getKey());
-				System.out.println("    Value: " + entry.getValue());
-			}
-		}
+		} while (messages.size() != 0);
 		System.out.println();		
 	}
 	
