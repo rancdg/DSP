@@ -1,13 +1,17 @@
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.Map.Entry;
 
 import javax.imageio.ImageIO;
@@ -42,6 +46,13 @@ public class Worker {
 	public static String propertiesFilePath = "cred.properties";
 	public static AmazonSQS managerSQS;
 	public static AmazonSQS workerSQS;
+	public static String id;
+	public static Long startTime;
+	public static double averageRuntime;
+	public static int totalJobs = 0;
+	public static List<String> handledUrls = new ArrayList<>();
+	public static List<String> failedUrls = new ArrayList<>();
+	public static Long finishTime;
 
 	/**
 	 * 
@@ -53,11 +64,12 @@ public class Worker {
 	public static void main(String[] args) throws FileNotFoundException,
 	IOException, InterruptedException{
 
+		startTime = System.currentTimeMillis();
 		Credentials = new PropertiesCredentials(
 				new FileInputStream(propertiesFilePath));
 		S3 = new AmazonS3Client(Credentials);
 		System.out.println("AmazonS3Client created.");
-
+		id = UUID.randomUUID().toString();
 
 		//Parse
 		if (args.length>2){
@@ -90,10 +102,16 @@ public class Worker {
 				String imgUrlStr = messageBody[0];
 				String appId = messageBody[1];
 				System.out.println("Incoming message: " + imgUrlStr);
-				URL imgUrl = new URL(imgUrlStr);
-				File newimage = imgResize(imgUrl);
-				System.out.println(imgUrl.getFile());
-				String key = uploadFileToS3(newimage ,  bucketName);
+				String key = null;
+				try {
+					URL imgUrl = new URL(imgUrlStr);
+					File newimage = imgResize(imgUrl);
+					System.out.println(imgUrl.getFile());
+					key = uploadFileToS3(newimage ,  bucketName);
+				} catch (Exception e) {
+					failedUrls.add(imgUrlStr);
+					e.printStackTrace();
+				}
 
 
 				//send response to manager
@@ -103,7 +121,7 @@ public class Worker {
 				String returnMessage = "workerMessage "+ URI + " " + imgUrlStr + " " +appId;
 				SendMessageRequest sendRequest2 = new SendMessageRequest(managerSqsURI, returnMessage);
 				managerSQS.sendMessage(sendRequest2);
-
+				handledUrls.add(imgUrlStr);
 
 				//Delete message
 				DeleteMessageRequest del = new DeleteMessageRequest(workerSqsURI, message.getReceiptHandle());
@@ -112,6 +130,69 @@ public class Worker {
 
 		}
 		while (messages.size()!=0);
+		finishTime = System.currentTimeMillis();
+		Long totalTime = finishTime - startTime;
+		totalJobs = handledUrls.size()+failedUrls.size();
+		averageRuntime = totalTime/totalJobs;
+		uploadStatistics();
+	}
+
+	private static void uploadStatistics() throws FileNotFoundException, IOException, InterruptedException {
+		String key = null;
+		try {
+ 
+			key = "workerStats_" + id + ".txt";
+			File file = new File(key);
+			
+			// if file doesnt exists, then create it
+			if (!file.exists()) {
+				file.createNewFile();
+			}
+ 
+			FileWriter fw = new FileWriter(file.getAbsoluteFile());
+			BufferedWriter bw = new BufferedWriter(fw);
+			
+ 
+			System.out.println("Done");			
+
+			bw.write("id-"+ id+"\n");
+			bw.write("startTime-"+startTime.toString()+"\n");
+			bw.write("finishTime-"+finishTime.toString()+"\n");
+			bw.write("averageRuntime-"+String.valueOf(averageRuntime)+"\n");
+			bw.write("totalJobs-"+ String.valueOf(totalJobs)+"\n");
+			bw.write("handledUrls:\n");
+			for (String url : handledUrls)
+				bw.write(url+"\n");
+			for (String url : failedUrls)
+				bw.write(url+"\n");
+			bw.close();
+		
+	} catch (IOException e) {
+		e.printStackTrace();
+	}
+		System.out.println(uploadToS3(key)); //return HTML URL
+	}
+	
+	private static String uploadToS3(String key) throws FileNotFoundException,
+	IOException, InterruptedException{
+
+		S3 = new AmazonS3Client(Credentials);
+		System.out.println("AmazonS3Client created.");
+		// If the bucket doesn't exist - will create it.
+		// Notice - this will create it in the default region :Region.US_Standard
+		if (!S3.doesBucketExist(bucketName)) {
+			S3.createBucket(bucketName);
+		}
+		else 
+			System.out.println("Bucket exist.");
+		File f = new File(key);
+		PutObjectRequest por = new PutObjectRequest(bucketName, f.getName(), f);
+		// Upload the file
+		por.withCannedAcl(CannedAccessControlList.PublicRead);
+		S3.putObject(por);
+		System.out.println("File uploaded.");
+		return f.getName();
+
 	}
 
 	//A helper function which does the "work" - 
