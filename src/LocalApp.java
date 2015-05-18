@@ -1,6 +1,8 @@
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -132,7 +134,10 @@ public class LocalApp{
 				if (messages.size() != 0){
 					for (Message message : messages) {
 						String messageBody = message.getBody();
-						System.out.println("HTML address:     "+ messageBody);
+						File output = new File(outputFile);
+						FileWriter fw = new FileWriter(output.getAbsoluteFile());
+						BufferedWriter bw = new BufferedWriter(fw);
+						bw.write("HTML address:     "+ messageBody);
 					}
 					Waiting=false;
 				}

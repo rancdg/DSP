@@ -38,6 +38,7 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
+import com.amazonaws.services.sqs.model.DeleteMessageBatchRequestEntry;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.DeleteQueueRequest;
 import com.amazonaws.services.sqs.model.Message;
@@ -154,18 +155,26 @@ public class Manager {
 					String line = reader.readLine();
 					System.out.println("building and counting tasks for appId-"
 							+ appId);
-					List<SendMessageBatchRequestEntry> messageEntries = new ArrayList<>();
+					List<SendMessageBatchRequestEntry> sendMessageEntries = new ArrayList<>();
 					while (line != null) {
 						//build the message batch
 						String jobMessage = line + " " + appId;
-						messageEntries.add(new SendMessageBatchRequestEntry(
+						sendMessageEntries.add(new SendMessageBatchRequestEntry(
 								String.valueOf(countJobs), jobMessage));
 						countJobs++;
+						if (countJobs%10 == 0){
+							SendMessageBatchRequest sendRequest = new SendMessageBatchRequest(
+									taskQUrl, sendMessageEntries);
+							taskSQS.sendMessageBatch(sendRequest);
+							sendMessageEntries = new ArrayList<>();
+						}
 						line = reader.readLine();
 					}
+					if (countJobs%100 != 0){
 					SendMessageBatchRequest sendRequest = new SendMessageBatchRequest(
-							taskQUrl, messageEntries);
+							taskQUrl, sendMessageEntries);
 					taskSQS.sendMessageBatch(sendRequest);
+					}
 					System.out.println("counted " + countJobs + " jobs");
 					
 					//initialize urlTable for this app
